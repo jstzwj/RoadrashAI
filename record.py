@@ -2,6 +2,7 @@
 import os
 import argparse
 import time
+import datetime
 import json
 import random
 import numpy as np
@@ -9,17 +10,54 @@ import cv2
 import mss
 import winsound
 from pynput import keyboard
+from PIL import Image
+
 
 duration = 1000  # millisecond
 do_freq = 440  # Hz
 so_freq = 392 * 2
 width = 640
 height = 480
+data_dir = './data'
+
+def record_screen():
+    with mss.mss() as sct:
+        grab_mon_index = 0
+        mon = sct.monitors[grab_mon_index]
+        monitor = {
+            "top": mon["top"] + 0, # 48, # 80
+            "left": mon["left"] + 0,
+            "width": width,
+            "height": height,
+            "mon": grab_mon_index,
+        }
+        image = np.array(sct.grab(monitor))
+        image = np.flip(image[:, :, :3], 2)
+        # image = image[:, :, ::-1]
+    
+    return image
+
+def save_data(image, key):
+    print(key)
+    now = datetime.datetime.now()
+    t = now.strftime("%Y-%m-%d-%H-%M-%S.%f")
+
+    img_file_name = os.path.join(data_dir, 'data-{}.jpg'.format(t))
+    json_file_name = os.path.join(data_dir, 'data-{}.json'.format(t))
+
+    im = Image.fromarray(image)
+    im.save(img_file_name, format='jpeg', quality=85)
+    with open(json_file_name, 'w', encoding='utf-8') as f:
+        f.write(json.dumps(key))
 
 # up, down, left, right, x, a, s, z, d, alt
+old_key = [0,0,0,0,0, 0,0,0,0,0]
 cur_key_vec = [0,0,0,0,0, 0,0,0,0,0]
+valid_keys = ['up', 'down', 'left', 'right', 'x', 'a', 's', 'z', 'd', 'alt']
 is_exit = False
 def on_press(key):
+    global is_exit
+    old_key = cur_key_vec.copy()
     if key == keyboard.Key.esc:
         is_exit = True
         print('exit key listener')
@@ -28,7 +66,7 @@ def on_press(key):
         k = key.char  # single-char keys
     except:
         k = key.name  # other keys
-    
+
     if k == 'up':
         cur_key_vec[0] = 1
     elif k == 'down':
@@ -50,7 +88,13 @@ def on_press(key):
     elif k == 'alt':
         cur_key_vec[9] = 1
 
+    if old_key != cur_key_vec:
+        image = record_screen()
+        save_data(image, cur_key_vec)
+
 def on_release(key):
+    global is_exit
+    old_key = cur_key_vec.copy()
     if key == keyboard.Key.esc:
         is_exit = True
         print('exit key listener')
@@ -59,7 +103,7 @@ def on_release(key):
         k = key.char  # single-char keys
     except:
         k = key.name  # other keys
-    
+
     if k == 'up':
         cur_key_vec[0] = 0
     elif k == 'down':
@@ -81,7 +125,14 @@ def on_release(key):
     elif k == 'alt':
         cur_key_vec[9] = 0
 
-def collect(data_dir, index):
+    if old_key != cur_key_vec:
+        image = record_screen()
+        save_data(image, cur_key_vec)
+
+def collect(arg_data_dir, index):
+    global data_dir
+    data_dir = arg_data_dir
+
     for i in list(range(5))[::-1]:
         print(i)
         time.sleep(1)
@@ -97,27 +148,10 @@ def collect(data_dir, index):
         if is_exit:
             break
 
-        with mss.mss() as sct:
-            grab_mon_index = 0
-            mon = sct.monitors[grab_mon_index]
-            monitor = {
-                "top": mon["top"] + 80,
-                "left": mon["left"] + 0,
-                "width": width,
-                "height": height,
-                "mon": grab_mon_index,
-            }
-            image = np.array(sct.grab(monitor))
-            image = np.flip(image[:, :, :3], 2)
-            image = image[:, :, ::-1]
-        
+        image = record_screen()
         key = cur_key_vec
+        save_data(image, key)
         
-        img_file_name = os.path.join(data_dir, 'raw_img-{}.png'.format(index))
-        json_file_name = os.path.join(data_dir, 'raw_json-{}.json'.format(index))
-        cv2.imwrite(img_file_name, image)
-        with open(json_file_name, 'w', encoding='utf-8') as f:
-            f.write(json.dumps(key))
         # show fps
         new_time = time.time()
         if index % 10 == 0:
@@ -125,8 +159,9 @@ def collect(data_dir, index):
         index += 1
         last_time = time.time()
 
-        time.sleep(0.1)
-        
+        time.sleep(1)
+
+    print('exit recording') 
         
 
 
